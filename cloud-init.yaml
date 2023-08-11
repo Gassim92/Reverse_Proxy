@@ -1,0 +1,41 @@
+#cloud-config
+package_upgrade: true
+packages:
+  - nginx
+
+write_files:
+-   content: |
+        upstream backend {
+            least_conn;
+            ${web_server_addresses}
+        }
+
+        server {
+            listen 80;
+            server_name ${rp_public_address};
+            return 301 https://$host$request_uri;
+        }
+
+        server {
+            listen 443 ssl;
+            server_name ${rp_public_address};
+
+            ssl_certificate /etc/nginx/ssl/nginx.crt;
+            ssl_certificate_key /etc/nginx/ssl/nginx.key;
+
+            location / {
+                proxy_set_header Host $host;
+                proxy_pass http://backend;
+            }
+        }
+    path: /etc/nginx/sites-available/webserver.conf
+    permissions: '0644'
+
+runcmd:
+  - systemctl start nginx
+  - systemctl enable nginx
+  - mkdir -p /etc/nginx/ssl
+  - sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt -subj "/C=FR/ST=Nord/L=Lille/O=Simplon/CN=mgk-project.com"
+  - unlink /etc/nginx/sites-enabled/default || true
+  - ln -s /etc/nginx/sites-available/webserver.conf /etc/nginx/sites-enabled/
+  - systemctl reload nginx
